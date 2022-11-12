@@ -182,7 +182,7 @@ func ReadPackageLockJSON(path string) (chan PackageLockJSON, chan string, error)
 		var p = new(PackageLockJSON)
 		err = json.Unmarshal(data, p)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		pCh <- *p
