@@ -1,23 +1,34 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 )
 
 var inPath *string
 
 func main() {
-	var packageLockJSON PackageLockJSON
-	err := ReadPackageLockJSON(*inPath, &packageLockJSON)
+	var p PackageLockJSON
+	err := ReadPackageLockJSON(*inPath, &p)
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)
 	}
 
-	fmt.Println(packageLockJSON)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // TODO read sigterm
+
+	depsCh := p.DependenciesGenerator(ctx)
+	workersChs := p.ResolveDependencies(ctx, runtime.NumCPU(), depsCh)
+	resolvedCh := p.ReadResolvers(ctx, workersChs...)
+
+	for dep := range resolvedCh {
+		fmt.Println(dep)
+	}
 }
 
 func init() {
