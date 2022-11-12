@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -148,21 +149,53 @@ type ResolvedDependency struct {
 	Name, Version, Shasum string
 }
 
-func ReadPackageLockJSON(path string, packageLockJSON *PackageLockJSON) error {
+func readFile(path string) ([]byte, error) {
 	if stats, err := os.Stat(*inPath); err != nil {
-		return fmt.Errorf("the file %s does not exists", path)
+		return nil, fmt.Errorf("the file %s does not exists", path)
 	} else if stats.IsDir() {
-		return fmt.Errorf("the file %s is a dir", path)
+		return nil, fmt.Errorf("the file %s is a dir", path)
 	} else {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			return nil, err
+		}
+		return data, nil
+	}
+}
+
+func ReadPackageLockJSON(path string) (chan PackageLockJSON, chan string, error) {
+	pCh := make(chan PackageLockJSON)
+	encCh := make(chan string)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	data, err := readFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	go func() {
+		defer wg.Done()
+		var p = new(PackageLockJSON)
+		err = json.Unmarshal(data, p)
+		if err != nil {
+			panic(err)
 		}
 
-		err = json.Unmarshal(data, packageLockJSON)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+		pCh <- *p
+	}()
+
+	go func() {
+		defer wg.Done()
+		encCh <- base64.StdEncoding.EncodeToString(data)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(pCh)
+		close(encCh)
+	}()
+
+	return pCh, encCh, nil
 }
