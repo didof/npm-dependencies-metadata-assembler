@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -11,11 +12,12 @@ import (
 	"syscall"
 )
 
-var inPath *string
+var inPath, outPath *string
+var dry *bool
 
 type Payload struct {
-	PackageLockJSON string
-	Dependencies    map[string]ResolvedDependency
+	PackageLockJSON string                        `json:"package-lock.json"`
+	Packages        map[string]ResolvedDependency `json:"packages"`
 }
 
 func main() {
@@ -35,7 +37,7 @@ func main() {
 	}
 
 	payload := new(Payload)
-	payload.Dependencies = make(map[string]ResolvedDependency)
+	payload.Packages = make(map[string]ResolvedDependency)
 
 jobs:
 	for i := 0; i < 2; i++ {
@@ -44,25 +46,46 @@ jobs:
 			cancel()
 			break jobs
 		case p := <-pCh:
+			defer func() { pCh = nil }()
 			depsCh := p.DependenciesGenerator(ctx)
 			workersChs := p.ResolveDependencies(ctx, runtime.NumCPU(), depsCh)
 			resolvedCh := p.ReadResolvers(ctx, workersChs...)
 
 			for dep := range resolvedCh {
-				payload.Dependencies[dep.Name] = dep
+				payload.Packages[dep.Name] = dep
 			}
 			fmt.Println("all dependencies have been resolved")
 		case enc := <-encCh:
+			defer func() { encCh = nil }()
 			payload.PackageLockJSON = enc
 			fmt.Println("package-lock.json has been encoded")
 		}
 	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if *dry {
+		fmt.Println(string(b))
+	}
+
+	if len(*outPath) > 0 {
+		err := os.WriteFile(*outPath, b, 0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	os.Exit(0)
 }
 
 func init() {
 	flag.Usage = usage
 	inPath = flag.String("i", "./package-lock.json", "The path to the package-lock.json file.")
-
+	outPath = flag.String("o", "payload.json", "The path where to write the payload.")
+	dry = flag.Bool("dry", false, "When dry is enabled the payload is printed to screen instead of beeing sent.")
 	flag.Parse()
 }
 

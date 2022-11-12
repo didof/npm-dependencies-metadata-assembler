@@ -146,7 +146,9 @@ type UnresolvedNamedDepedency struct {
 }
 
 type ResolvedDependency struct {
-	Name, Version, Shasum string
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Shasum  string `json:"shasum"`
 }
 
 func readFile(path string) ([]byte, error) {
