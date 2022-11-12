@@ -146,7 +146,7 @@ type UnresolvedNamedDepedency struct {
 }
 
 type ResolvedDependency struct {
-	Name    string `json:"name"`
+	Name    string `json:"-"`
 	Version string `json:"version"`
 	Shasum  string `json:"shasum"`
 }
