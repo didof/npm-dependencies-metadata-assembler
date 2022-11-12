@@ -23,6 +23,18 @@ go build -o cli
 
 ## Run
 
+If you have a `package.json` but not a `package-lock.json`, run:
+
 ```bash
-./cli -i ./dev/package-lock.json -o payload.json -dry
+./cli
 ```
+
+If you want to use an already present `package-lock.json`, run:
+
+```bash
+./cli -i ./package-lock.json
+```
+
+### TODOs
+
+- ignore `file:` dependencies

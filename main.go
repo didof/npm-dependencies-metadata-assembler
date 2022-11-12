@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"runtime"
 	"syscall"
@@ -20,7 +21,31 @@ type Payload struct {
 	Packages        map[string]ResolvedDependency `json:"packages"`
 }
 
+// TODO ignore file:
+
 func main() {
+	if len(*inPath) == 0 {
+		if path, err := exec.LookPath("npm"); err != nil {
+			log.Fatal("impossible continue")
+		} else {
+			if stats, err := os.Stat("package.json"); err != nil {
+				log.Fatal("package.json missing")
+			} else if stats.IsDir() {
+				log.Fatal("package.json is not a file")
+			}
+
+			fmt.Println("package-lock.json not found. Producing it.")
+
+			cmd := exec.Command(path, "install", "--package-lock-only", "--no-audit")
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				log.Fatal(err)
+			}
+
+			*inPath = "package-lock.json"
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigCh := make(chan os.Signal, 1)
@@ -83,7 +108,7 @@ jobs:
 
 func init() {
 	flag.Usage = usage
-	inPath = flag.String("i", "./package-lock.json", "The path to the package-lock.json file.")
+	inPath = flag.String("i", "", "The path to the package-lock.json file.")
 	outPath = flag.String("o", "payload.json", "The path where to write the payload.")
 	dry = flag.Bool("dry", false, "When dry is enabled the payload is printed to screen instead of beeing sent.")
 	flag.Parse()

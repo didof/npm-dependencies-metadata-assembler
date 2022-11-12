@@ -102,33 +102,31 @@ func resolve(ctx context.Context, ch <-chan UnresolvedNamedDepedency) chan Resol
 				url := strings.Split(dep.Resolved, "/-/")[0]
 				url += fmt.Sprintf("/%s", dep.Version)
 
-				req, err := http.NewRequest(http.MethodGet, url, nil)
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 				if err != nil {
 					log.Fatal(err)
 				}
 
-				req = req.WithContext(ctx)
-
-				client := new(http.Client)
-
-				res, err := client.Do(req)
+				res, err := http.DefaultClient.Do(req)
 				if err != nil {
 					// TODO return err as first citizen
 					log.Fatal(err)
+				} else if res.StatusCode != http.StatusOK {
+					log.Fatal("unexepcted response")
+					return
 				}
 				defer res.Body.Close()
 
-				d := json.NewDecoder(res.Body)
 				v := new(Response)
-				err = d.Decode(v)
-				if err != nil {
+				if err := json.NewDecoder(res.Body).Decode(v); err != nil {
 					log.Fatal(err)
-				}
+				} else {
+					out <- ResolvedDependency{
+						Name:    dep.Name,
+						Version: dep.Version,
+						Shasum:  v.Dist.Shasum}
 
-				out <- ResolvedDependency{
-					Name:    dep.Name,
-					Version: dep.Version,
-					Shasum:  v.Dist.Shasum}
+				}
 			}
 		}
 	}()
