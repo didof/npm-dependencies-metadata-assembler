@@ -101,7 +101,16 @@ func resolve(ctx context.Context, ch <-chan UnresolvedNamedDepedency) chan Resol
 				url := strings.Split(dep.Resolved, "/-/")[0]
 				url += fmt.Sprintf("/%s", dep.Version)
 
-				res, err := http.Get(url)
+				req, err := http.NewRequest(http.MethodGet, url, nil)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				req = req.WithContext(ctx)
+
+				client := new(http.Client)
+
+				res, err := client.Do(req)
 				if err != nil {
 					// TODO return err as first citizen
 					log.Fatal(err)
