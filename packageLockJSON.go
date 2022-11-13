@@ -34,8 +34,8 @@ func (p *PackageLockJSON) DependenciesGenerator(ctx context.Context) chan Unreso
 	return out
 }
 
-func (p *PackageLockJSON) ResolveDependencies(ctx context.Context, n int, in <-chan UnresolvedNamedDepedency) []chan ResolvedDependency {
-	chs := make([]chan ResolvedDependency, n)
+func (p *PackageLockJSON) ResolveDependencies(ctx context.Context, n int, in <-chan UnresolvedNamedDepedency) []chan ResolveResult {
+	chs := make([]chan ResolveResult, n)
 
 	for i := 0; i < n; i++ {
 		chs[i] = resolve(ctx, in)
@@ -44,14 +44,14 @@ func (p *PackageLockJSON) ResolveDependencies(ctx context.Context, n int, in <-c
 	return chs
 }
 
-func (p *PackageLockJSON) ReadResolvers(ctx context.Context, ins ...chan ResolvedDependency) chan ResolvedDependency {
+func (p *PackageLockJSON) ReadResolvers(ctx context.Context, ins ...chan ResolveResult) chan ResolvedDependency {
 	out := make(chan ResolvedDependency)
 
 	var wg sync.WaitGroup
 	wg.Add(len(ins))
 
 	for _, in := range ins {
-		go func(ch <-chan ResolvedDependency) {
+		go func(ch <-chan ResolveResult) {
 			defer wg.Done()
 
 		loop:
@@ -63,7 +63,12 @@ func (p *PackageLockJSON) ReadResolvers(ctx context.Context, ins ...chan Resolve
 					if !ok {
 						break loop
 					}
-					out <- w
+					if w.Error != nil {
+						// TODO Decice how to handle
+						log.Fatal(w.Error)
+					}
+
+					out <- w.Value
 				}
 			}
 		}(in)
@@ -83,8 +88,13 @@ type Response struct {
 	} `json:"dist"`
 }
 
-func resolve(ctx context.Context, ch <-chan UnresolvedNamedDepedency) chan ResolvedDependency {
-	out := make(chan ResolvedDependency)
+type ResolveResult struct {
+	Error error
+	Value ResolvedDependency
+}
+
+func resolve(ctx context.Context, ch <-chan UnresolvedNamedDepedency) chan ResolveResult {
+	out := make(chan ResolveResult)
 
 	go func() {
 		defer close(out)
@@ -104,7 +114,9 @@ func resolve(ctx context.Context, ch <-chan UnresolvedNamedDepedency) chan Resol
 
 				req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 				if err != nil {
-					log.Fatal(err)
+					r := new(ResolveResult)
+					r.Error = err
+					out <- *r
 				}
 
 				res, err := http.DefaultClient.Do(req)
@@ -121,11 +133,13 @@ func resolve(ctx context.Context, ch <-chan UnresolvedNamedDepedency) chan Resol
 				if err := json.NewDecoder(res.Body).Decode(v); err != nil {
 					log.Fatal(err)
 				} else {
-					out <- ResolvedDependency{
+					r := new(ResolveResult)
+					r.Value = ResolvedDependency{
 						Name:    dep.Name,
 						Version: dep.Version,
-						Shasum:  v.Dist.Shasum}
-
+						Shasum:  v.Dist.Shasum,
+					}
+					out <- *r
 				}
 			}
 		}
